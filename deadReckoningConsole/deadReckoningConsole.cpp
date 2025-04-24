@@ -1,12 +1,75 @@
+#include "WGS84toCartesian.hpp"
 #include <Wire.h> // Required for I2C 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> 
 #include <Arduino_LSM6DS3.h> // Required for IMU
-#include <iostream>
 #include <BasicLinearAlgebra.h>
+
+#include <iostream>
 #include <cmath>
 #include <cstdint>
 #include <vector>
 #include <Gaussian.h>
+#include <array>
+
+struct GNSSCoordinates {
+    double latitude;
+    double longitude;
+    double altitude;
+};
+
+/**
+* @brief Interface for GNSS receiver
+* Handles communication with the u-blox GNSS receiver module via I2C,
+* providing methods to initialize the module, update coordinates at a specified
+* sampling rate, and access the location data.
+* @todo Move initial coordinate reference as a method instead of in loop()
+*/
+
+class GNSSReader : public SFE_UBLOX_GNSS {
+public:
+    GNSSReader() : debugEnabled(false) {}
+    GNSSReader(bool enableDebug) : debugEnabled(enableDebug) {}
+
+    bool begin() {
+        if (!SFE_UBLOX_GNSS::begin()) {
+            Serial.println("GNSS receiver not detected at default I2C address. Check wiring.");
+            return false;
+        }
+        if (debugEnabled) {
+            enableDebugging();
+        }
+        setI2COutput(COM_TYPE_UBX); // Set the I2C port to output UBX only (turn off NMEA noise)
+        saveConfigSelective(VAL_CFG_SUBSEC_IOPORT); // Save (only) the communications port settings to flash and BBR      
+
+        return true;
+    }
+
+    bool updateCoordinates(float samplingRate = 1.0f) {
+        unsigned long currentTime = millis();
+        if (static_cast<float>(currentTime - previousTimeUpdate) > (1000.0 / samplingRate)) {
+            previousTimeUpdate = currentTime;
+            coordinates.longitude = static_cast<double>(getLongitude()) * 1e-7; // [degrees]
+            coordinates.latitude = static_cast<double>(getLatitude()) * 1e-7; // [degrees]
+            coordinates.altitude = static_cast<double>(getAltitude()) * 1e-3; // [m above ellipsoid]
+            return true;
+        }
+        return false;
+    }
+
+    const GNSSCoordinates& getCoordinates() { return coordinates; }
+
+    void printToSerial(const std::array<double, 2>& measured, const std::array<double, 2>& estimated, int numDecimals = 10) {
+        Serial.print("measured=" + String(measured[0], numDecimals) + "," + String(measured[1], numDecimals));
+        Serial.print(" | ");
+        Serial.print("estimated=" + String(estimated[0], numDecimals) + "," + String(estimated[1], numDecimals));
+    }
+
+private:
+    unsigned long previousTimeUpdate{ 0UL };
+    bool debugEnabled;
+    GNSSCoordinates coordinates;
+};
+
 
 struct AccData
 {
@@ -15,46 +78,54 @@ struct AccData
     float accZ{ 0 };
 };
 
-class IMUReader {
+/**
+* @brief Interface for reading X, Y, Z accelerometer data from the IMU.
+*/
+class IMUReader : public LSM6DS3Class {
 public:
-    // Constructor
-    IMUReader() = default;
+    IMUReader(TwoWire& wire, uint8_t slaveAddress) : LSM6DS3Class{ wire, slaveAddress } {}
 
-    // Initialize IMU
-    void initIMU() {
-        if (!IMU.begin()) {
-            std::cout << "Failed to initialize IMU" << std::endl;
-            while (1);
-        }
-        else {
-            std::cout << "IMU initialized successfully" << std::endl;
-            float sampleRate = IMU.accelerationSampleRate();
-            std::cout << "Sample rate: " << sampleRate << " Hz" << std::endl;
-        }
+    // Set different sample rates
+    void setAccRate13Hz() {
+        writeRegister(0x10, 0b00011000);
+        writeRegister(0x11, 0b00011100);
+    }
+    void setAccRate26Hz() {
+        writeRegister(0x10, 0b00101000);
+        writeRegister(0x11, 0b00101100);
+    }
+    void setAccRate52Hz() {
+        writeRegister(0x10, 0b00111000);
+        writeRegister(0x11, 0b00111100);
+    }
+    void setAccRate104Hz() { // Default
+        writeRegister(0x10, 0b01001000);
+        writeRegister(0x11, 0b01001100);
     }
 
-    // Read accelerometer data
-    void readAccelerometer() {
-        if (IMU.accelerationAvailable()) {
-            IMU.readAcceleration(accData.accX, accData.accY, accData.accZ); // Takes references to store data
+    bool updateAccelerometer() {
+        if (accelerationAvailable()) {
+            readAcceleration(accData.accX, accData.accY, accData.accZ);
+
+            // Conversion from g to m/s^2            
+            accData.accX *= gravitationConst;
+            accData.accY *= gravitationConst;
+            accData.accZ *= gravitationConst;
+
+            return true;
         }
-        else {
-            std::cerr << "Accelerometer data not available" << std::endl;
-        }
+        return false;
     }
 
-    // Getter for accData
     const AccData& getAccData() const {
         return accData;
     }
 
-
 private:
-    AccData accData; // instantiate struct
+    AccData accData;
+    const float gravitationConst{ 9.816 }; // NB. dependent on latitude
 };
 
-
-// Unscented Kalman Filter class
 class UnscentedKalmanFilter
 {
 public:
@@ -166,27 +237,41 @@ private:
     }
 };
 
+bool referenceInitialized = false;
+std::array<double, 2> referencePosition;
 
-class GNSSReader
+GNSSReader gnss;
+IMUReader imu{ Wire, LSM6DS3_ADDRESS };
+
+void setup()
 {
-public:
-
-private:
-
-};
-
-int main(void)
-{
-    std::cout << "Hello World!\n";
-	Serial.begin(115200);
-	IMUReader imu;
-	imu.initIMU();
-    imu.readAccelerometer();
-    
-	// get accelerometer data
-	const AccData& accData = imu.getAccData();
-
-	std::cout << "Accelerometer Data: " << std::endl;
-	std::cout << "X: " << accData.accX << std::endl;
-	std::cout << "Y: " << accData.accY << std::endl;
+    constexpr int baudRate{ 115200 };
+    Serial.begin(baudRate);
+    while (!Serial);
+    Wire.begin(); // Initialize I2C
+    if (!gnss.begin()) { Serial.println("Failed to initialize GNSS"); }
+	if (!imu.begin()) { Serial.println("Failed to initialize IMU"); }
 }
+
+void loop() {
+    if (gnss.updateCoordinates() && imu.updateAccelerometer()) {
+        const GNSSCoordinates& coords = gnss.getCoordinates();
+        if (!referenceInitialized) {
+            referencePosition = { coords.latitude, coords.longitude };
+            Serial.println("Reference position initialized: Lat=" + String(referencePosition[0]) + " Lon=" + String(referencePosition[1]));
+            referenceInitialized = true;
+            return;
+        }
+
+        const AccData& accData = imu.getAccData();
+		Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accX));
+       
+        // Conversion to Cartesian
+       
+        std::array<double, 2> currentPosition = { coords.latitude, coords.longitude };
+        std::array<double, 2> cartesian = wgs84::toCartesian(referencePosition, currentPosition);
+        // gnss.printToSerial(currentPosition, cartesian, 10);
+
+    }
+}
+
