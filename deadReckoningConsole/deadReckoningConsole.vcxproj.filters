@@ -18,5 +18,8 @@
     <ClCompile Include="deadReckoningConsole.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="coordinatesToCartesian.cpp">
+      <Filter>Header Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
