@@ -3,12 +3,10 @@
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> 
 #include <Arduino_LSM6DS3.h> // Required for IMU
 #include <BasicLinearAlgebra.h>
-
 #include <iostream>
 #include <cmath>
 #include <cstdint>
 #include <vector>
-#include <Gaussian.h>
 #include <array>
 
 struct GNSSCoordinates {
@@ -61,7 +59,7 @@ public:
     void printToSerial(const std::array<double, 2>& measured, const std::array<double, 2>& estimated, int numDecimals = 10) {
         Serial.print("measured=" + String(measured[0], numDecimals) + "," + String(measured[1], numDecimals));
         Serial.print(" | ");
-        Serial.print("estimated=" + String(estimated[0], numDecimals) + "," + String(estimated[1], numDecimals));
+        Serial.println("estimated=" + String(estimated[0], numDecimals) + "," + String(estimated[1], numDecimals));
     }
 
 private:
@@ -264,13 +262,13 @@ void loop() {
         }
 
         const AccData& accData = imu.getAccData();
-		Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accX));
+		Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accY));
        
         // Conversion to Cartesian
        
         std::array<double, 2> currentPosition = { coords.latitude, coords.longitude };
         std::array<double, 2> cartesian = wgs84::toCartesian(referencePosition, currentPosition);
-        // gnss.printToSerial(currentPosition, cartesian, 10);
+        //gnss.printToSerial(currentPosition, cartesian, 10);
 
     }
 }
