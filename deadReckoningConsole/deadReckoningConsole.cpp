@@ -11,6 +11,13 @@ struct GNSSCoordinates {
     double altitude;
 };
 
+/**
+* @brief Interface for GNSS receiver
+* Handles communication with the u-blox GNSS receiver module via I2C,
+* providing methods to initialize the module, update coordinates at a specified
+* sampling rate, and access the location data.
+* @todo Move initial coordinate reference as a method instead of in loop()
+*/
 class GNSSReader {
 public:
     GNSSReader() : debugEnabled(false) {}
