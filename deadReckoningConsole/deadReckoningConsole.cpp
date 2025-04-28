@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <stdint.h>
 #include <Gaussian.h>
 
 struct AccData
@@ -98,6 +99,19 @@ public:
         compute_weights();
 
     }
+    
+	// Perform a step of the UKF
+    void step(const BLA::Matrix<n_x>& y_k)
+    {
+        timeUpdate();
+        measurementUpdate(y_k);
+    }
+
+	// Getter for the state estimate
+    BLA::Matrix<n_x> getState() const
+    {
+        return x_hat;
+    }
 
 private:
     // UKF params
@@ -136,18 +150,22 @@ private:
 								0, 0, 0, 0, 0, 1 }; // Measurement matrix
 
     // Function for process model
-    BLA::Matrix<n_x, 1> process_model(const BLA::Matrix<n_x, 1>& x)
+    BLA::Matrix<n_x> process_model(const BLA::Matrix<n_x>& x)
     {
-        BLA::Matrix<n_x, 1> x_pred = A * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
+        BLA::Matrix<n_x> x_pred = A * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
 		return x_pred;
     }
 
 	// Function for measurement model
-    BLA::Matrix<n_m, 1> measurement_model(const BLA::Matrix<n_x, 1>& x)
+    BLA::Matrix<n_m> measurement_model(const BLA::Matrix<n_x>& x)
     {
-		BLA::Matrix<n_m, 1> y_pred = H * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
+		BLA::Matrix<n_m> y_pred = H * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
 		return y_pred;
     }
+
+    // Containers for sigma points
+    BLA::Matrix<num_sigma_points, n_x> X; // After pass through of process model
+    BLA::Matrix<num_sigma_points, n_x> Y; // After pass thorugh of measurement model
 
     void compute_weights()
     {
@@ -163,6 +181,68 @@ private:
 			W_m(i) = 1 / (2 * (n_x + lambda));
 			W_c(i) = 1 / (2 * (n_x + lambda));
         }
+    }
+
+    void createSigmaPoints()
+    {
+
+    }
+
+    void timeUpdate()
+    {
+        // Create sigma points
+		createSigmaPoints();
+
+	    // Pass sigma points through process model
+        for (std::uint8_t i = 0; i < num_sigma_points; ++i) 
+        {
+			BLA::Matrix<n_x, 1> x_i; // intermediate state vector from sigma points
+            for (std::uint8_t j = 0; j < n_x; ++j) {
+                x_i(j) = X_sigma(i, j);
+            }
+
+            // Apply process model
+            BLA::Matrix<n_x, 1> x_pred = process_model(x_i);
+
+            // Store result X_sigma
+            for (std::uint8_t j = 0; j < n_x; ++j) {
+                X_sigma(i, j) = x_pred(j);
+            }
+        }
+
+		// Compute predicted state mean
+		x_hat.Fill(0.f);
+		for (std::uint8_t i = 0; i < num_sigma_points; ++i) {
+			for (std::uint8_t j = 0; j < n_x; ++j) {
+				x_hat(j) += W_m(i) * X_sigma(i, j); // sum of weighted sigma points
+			}
+		}
+
+		// Compute predicted state covariance
+		P.Fill(0.f);
+        for (std::uint8_t i = 0; i < num_sigma_points; ++i)
+        {
+            BLA::Matrix<n_x, 1> x_i; // intermediate state vector from sigma points
+            for (std::uint8_t j = 0; j < n_x; ++j) {
+                x_i(j) = X_sigma(i, j);
+            }
+
+            BLA::Matrix<n_x, 1> x_diff = x_i - x_hat; // difference from mean
+
+            for (std::uint8_t j = 0; j < n_x; ++j)
+            {
+                for (std::uint8_t k = 0; k < n_x; ++k)
+                {
+                    P(j, k) += W_c(i) * x_diff(j) * x_diff(k); // sum of weighted outer products
+                }
+            }
+        }
+
+		P += Q; // Add process noise covariance to state covariance
+    }
+
+    void measurementUpdate() {
+
     }
 };
 
