@@ -3,19 +3,19 @@
 #include "IMUReader.h"
 #include "GNSSReader.h"
 #include <Wire.h> // Required for I2C 
-#include <SparkFun_u-blox_GNSS_v3.h>
-#include <Arduino_LSM6DS3.h> // Required for IMU
 #include <BasicLinearAlgebra.h>
-#include <cmath>
-#include <cstdint>
+#include <array>
 
-
-bool referenceInitialized = false;
-std::array<double, 2> referencePosition;
 
 GNSSReader gnss;
 IMUReader imu{ Wire, LSM6DS3_ADDRESS };
 UKF ukf;
+
+static bool referenceInitialized{ false };
+static std::array<double, 2> lastReference;
+static std::array<double, 2> currentPosition;
+static std::array<double, 2> cartesianMeas;
+static BLA::Matrix<ukf.n_x> measurements;
 
 void setup()
 {
@@ -30,31 +30,32 @@ void setup()
 void loop() {
     
     if (gnss.updateCoordinates() && imu.updateAccelerometer()) {
-        const GNSSCoordinates& coords = gnss.getCoordinates();
+        const auto& coords = gnss.getCoordinates();
 
         if (!referenceInitialized) {
-            referencePosition = { coords.latitude, coords.longitude };
-            Serial.println("Reference position initialized: Lat=" + String(referencePosition[0]) + " Lon=" + String(referencePosition[1]));
+            lastReference = { coords.latitude, coords.longitude };
             referenceInitialized = true;
             return;
         }
+        
+        currentPosition = { coords.latitude, coords.longitude };
+        cartesianMeas = wgs84::toCartesian(lastReference, currentPosition); // Convert to Cartesian in meters using the UTM projection
+        lastReference = currentPosition;
 
-        // Convert the coordinates in degrees to cartesian in meters using the UTM projection
-        std::array<double, 2> cartesian = wgs84::toCartesian(referencePosition, currentPosition);
+        measurements = { cartesianMeas[0], cartesianMeas[1], imu.getAccData().accX, imu.getAccData().accY };
 
-        const AccData& accData = imu.getAccData();
-        Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accY));
-
-        BLA::Matrix<ukf.n_x> measurements = { cartesian[0], cartesian[0], accData.accX, accData.accY}; 
-        ukf.timeUpdate();
+        
+        // Compute the positional state prediction using the UKF
+        ukf.timeUpdate(); 
         ukf.measurementUpdate(measurements);
-        //gnss.printToSerial(currentPosition, cartesian, 10);
-        
 
+        // Print estimate and measurements for data acquisition using serial_reader.py
+        gnss.printToSerial(cartesianMeas, ukf.getPosition(), 10);
         
-        
-   
-        
+        // Debugging
+        // Serial.println("Position data: Lat=" + String(referencePosition[0]) + " Lon=" + String(referencePosition[1]));
+        // Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accY));
+
 
     }
 }

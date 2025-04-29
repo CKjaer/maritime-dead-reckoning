@@ -21,8 +21,8 @@ public:
     const GNSSCoordinates& getCoordinates() const;
 
     void printToSerial(const std::array<double, 2>& measured,
-                    const std::array<double, 2>& estimated, 
-                    int numDecimals = 10);
+                       const std::array<double, 2>& estimated, 
+                       int numDecimals = 10);
 
 private:
     unsigned long previousTimeUpdate{ 0UL };

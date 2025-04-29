@@ -36,13 +36,12 @@ public:
         R(3, 3) = std::pow(0.006481, 2); // IMU Y
 
         computeWeights();
-
     }
-
-    BLA::Matrix<n_x> getState() const
-    {
-        return x_hat; // State estimate
+    
+    std::array<double, 2> getPosition() const { 
+        return { static_cast<double>(x_hat(0)), static_cast<double>(x_hat(1)) };
     }
+    
 
 private:
     // UKF params
