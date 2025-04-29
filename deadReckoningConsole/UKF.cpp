@@ -32,11 +32,10 @@ public:
         Q(5, 5) = sigma_qa;
 
         // Initialize measurement noise covariance matrix
-        // CHECK THIS, WE NEED TO CHANGE THE NOISE VALUES
-        R(0, 0) = 0.1; // GPS X
-        R(1, 1) = 0.1; // GPS Y
-        R(2, 2) = 0.1; // IMU X
-        R(3, 3) = 0.1; // IMU Y
+        R(0, 0) = std::pow(2.461963, 2); // GPS X
+        R(1, 1) = std::pow(1.420877, 2); // GPS Y
+        R(2, 2) = std::pow(0.006728, 2); // IMU X
+        R(3, 3) = std::pow(0.006481, 2); // IMU Y
 
         // Compute weights for sigma points
         compute_weights();
