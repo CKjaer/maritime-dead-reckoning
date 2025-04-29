@@ -117,11 +117,11 @@ private:
 
         // Calculate the square root of the scaled covariance matrix 
         auto P_scaled = (n_x + lambda) * P;
-        auto P_sqrt = BLA::CholeskyDecompose(P).L;
+        auto P_sqrt = BLA::CholeskyDecompose(P_scaled).L;
 
         for (std::uint8_t i{ 0 }; i < n_x; ++i) {
             X_sigma.Column(i + 1) = x_hat + P_sqrt.Column(i) // First half of columns
-                X_sigma.Column(i + n_x + 1) = x_hat + P_sqrt.Column(i) // Second half of the columns
+            X_sigma.Column(i + n_x + 1) = x_hat + P_sqrt.Column(i) // Second half of the columns
         }
     }
 
