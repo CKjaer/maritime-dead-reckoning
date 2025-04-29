@@ -39,13 +39,6 @@ public:
 
     }
 
-    void step(const BLA::Matrix<n_m>& y_k)
-    {
-        timeUpdate();
-        measurementUpdate(y_k);
-    }
-
-   
     BLA::Matrix<n_x> getState() const
     {
         return x_hat; // State estimate
@@ -138,7 +131,7 @@ private:
         P += Q; // Add process noise covariance to state covariance
     }
 
-    void measurementUpdate(const BLA::Matrix<n_m> y_k)
+    void measurementUpdate(const BLA::Matrix<n_m>& y_k)
     {
         // Apply measurement model to sigma points
         Y_sigma = H * X_sigma; // [n_m, n_x] * [n_x, num_sigma_points]
