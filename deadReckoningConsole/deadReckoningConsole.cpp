@@ -1,5 +1,5 @@
 #include <Wire.h> // Required for I2C 
-#include <SparkFun_u-blox_GNSS_Arduino_Library.h> 
+#include <SparkFun_u-blox_GNSS_v3.h>
 #include <Arduino_LSM6DS3.h> // Required for IMU
 #include <iostream>
 #include <BasicLinearAlgebra.h>
@@ -101,7 +101,7 @@ public:
     }
     
 	// Perform a step of the UKF
-    void step(const BLA::Matrix<n_x>& y_k)
+    void step(const BLA::Matrix<n_m>& y_k)
     {
         timeUpdate();
         measurementUpdate(y_k);
@@ -129,8 +129,8 @@ private:
 	BLA::Matrix<n_m, n_m> R; // Measurement noise covariance matrix
 
 	// Sigma points
-	BLA::Matrix<num_sigma_points, n_x> X_sigma; // Sigma points state matrix
-	BLA::Matrix<num_sigma_points, n_m> Y_sigma; // Sigma points measurement matrix
+	BLA::Matrix<n_x, num_sigma_points> X_sigma; // Sigma points state matrix
+	BLA::Matrix<n_m, num_sigma_points> Y_sigma; // Sigma points measurement matrix
 
     // Weights
 	BLA::Matrix<num_sigma_points> W_m; // Weights for mean
@@ -148,20 +148,6 @@ private:
 							    0, 1, 0, 0, 0, 0,
 								0, 0, 0, 0, 1, 0,
 								0, 0, 0, 0, 0, 1 }; // Measurement matrix
-
-    // Function for process model
-    BLA::Matrix<n_x> process_model(const BLA::Matrix<n_x>& x)
-    {
-        BLA::Matrix<n_x> x_pred = A * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
-		return x_pred;
-    }
-
-	// Function for measurement model
-    BLA::Matrix<n_m> measurement_model(const BLA::Matrix<n_x>& x)
-    {
-		BLA::Matrix<n_m> y_pred = H * x; // NOT SURE IF THERE SHOULD BE A NOISE TERM HERE
-		return y_pred;
-    }
 
     // Containers for sigma points
     BLA::Matrix<num_sigma_points, n_x> X; // After pass through of process model
@@ -193,37 +179,17 @@ private:
         // Create sigma points
 		createSigmaPoints();
 
-	    // Pass sigma points through process model
-        for (std::uint8_t i = 0; i < num_sigma_points; ++i) 
-        {
-			BLA::Matrix<n_x, 1> x_i; // intermediate state vector from sigma points
-            for (std::uint8_t j = 0; j < n_x; ++j) {
-				x_i(j) = X_sigma(i, j); // dim: [num_sigma_points, n_x]
-            }
-
-            // Apply process model
-            BLA::Matrix<n_x, 1> x_pred = process_model(x_i);
-
-            // Store result X_sigma
-            for (std::uint8_t j = 0; j < n_x; ++j) {
-                X_sigma(i, j) = x_pred(j);
-            }
-        }
+		// Apply process model to sigma points
+		X_sigma = A * X_sigma; // [num_sigma_points, n_x] * [n_x, n_x]
 
 		// Compute predicted state mean
-		x_hat.Fill(0.f);
-		for (std::uint8_t i = 0; i < num_sigma_points; ++i) {
-			for (std::uint8_t j = 0; j < n_x; ++j) {
-				x_hat(j) += W_m(i) * X_sigma(i, j); // sum of weighted sigma points
-			}
-		}
+		x_hat = X_sigma * W_m; // [num_sigma_points, n_x] * [n_x, 1]
 
 		// Compute predicted state covariance Cov(x)
-        P.Fill(0.f);
-        for (uint8_t i = 0; i < num_sigma_points; ++i) {
+        for (uint8_t i = 0; i < num_sigma_points; ++i) { // cols
             BLA::Matrix<n_x> x_diff;
-            for (uint8_t j = 0; j < n_x; ++j) {
-                x_diff(j) = X_sigma(i, j) - x_hat(j); // Get difference between sigma point state vectors and mean
+            for (uint8_t j = 0; j < n_x; ++j) { // rows
+                x_diff(j) = X_sigma(j, i) - x_hat(j); // Get difference between sigma point state vectors and mean
             }
 
             // Update P with weighted outer product
@@ -235,43 +201,19 @@ private:
 
     void measurementUpdate(const BLA::Matrix<n_m> y_k) 
     {
-		// Pass sigma points through measurement model
-        for (std::uint8_t i = 0; i < num_sigma_points; ++i)
-        {
-            BLA::Matrix<n_x> x_i; // intermediate state vector from sigma points
-            for (std::uint8_t j = 0; j < n_x; ++j)
-            {
-                x_i(j) = X_sigma(i, j);
-            }
-
-            // Apply measurement model
-            BLA::Matrix<n_m> y_pred = measurement_model(x_i);
-
-            // Store result Y_sigma
-            for (std::uint8_t j = 0; j < n_m; ++j)
-            {
-                Y_sigma(i, j) = y_pred(j); // dim: [num_sigma_points, n_m]
-            }
-        }
+        // Apply measurement model to sigma points
+		Y_sigma = H * X_sigma; // [n_m, n_x] * [n_x, num_sigma_points]
 
 		// Compute predicted measurement mean
 		BLA::Matrix<n_m> y_hat; // predicted measurement mean
-        y_hat.Fill(0.f);
-        for (std::uint8_t i = 0; i < num_sigma_points; ++i) 
-        {
-            for (std::uint8_t j = 0; j < n_m; ++j) 
-            {
-                y_hat(j) += W_m(i) * Y_sigma(i, j); // sum of weighted sigma points
-            }
-        }
+		y_hat = Y_sigma * W_m; // [n_m, num_sigma_points] * [num_sigma_points, 1]
 
 		// Compute predicted measurement covariance Cov(y)
+        BLA::Matrix<n_m> y_diff;
         BLA::Matrix<n_m, n_m> P_yy;
-        P_yy.Fill(0.f);
         for (std::uint8_t i = 0; i < num_sigma_points; ++i)
         {
             // get difference between sigma point measurement vectors and mean
-			BLA::Matrix<n_m> y_diff;
             for (std::uint8_t j = 0; j < n_m; ++j)
             {
 				y_diff(j) = Y_sigma(i, j) - y_hat(j);
@@ -282,8 +224,7 @@ private:
 		P_yy += R; // Add measurement noise covariance to measurement covariance
 
 		// Compute cross covariance Cov(x, y)
-		BLA::Matrix<n_x, n_m> P_yx;
-		P_yx.Fill(0.f);
+		BLA::Matrix<n_x, n_m> P_xy;
         for (std::uint8_t i = 0; i < num_sigma_points; ++i)
         {
             // get difference between sigma point state vectors and mean state
@@ -293,31 +234,22 @@ private:
                 x_diff(j) = X_sigma(i, j) - x_hat(j);
             }
 
-            // get difference between sigma point measurement vectors and mean measurement
-            BLA::Matrix<n_m> y_diff;
-            for (std::uint8_t j = 0; j < n_m; ++j)
-            {
-                y_diff(j) = Y_sigma(i, j) - y_hat(j);
-            }
-            P_yx += W_c(i) * y_diff * (~x_diff); // outer product
+            P_xy += W_c(i) * x_diff * (~y_diff); // outer product
         }
 
 		// Compute Kalman gain
 		auto P_yy_inv = BLA::Inverse(P_yy); // Precompute inverse of P_yy
-		BLA::Matrix<n_x, n_m> K = P_yx * P_yy_inv; // Kalman gain
+		BLA::Matrix<n_x, n_m> K = P_xy * P_yy_inv; // Kalman gain
 
 		// Get residuals
         BLA::Matrix<n_m> y_tilde;
-		for (std::uint8_t i = 0; i < n_m; ++i)
-		{
-			y_tilde(i) = y_k(i) - y_hat(i); // residual (diff between reading and predicted measurement)
-		}
+		y_tilde = y_k - y_hat; // residual (diff between reading and predicted measurement)
 
         // Update state estimation
         x_hat = x_hat + K * y_tilde;
 
 		// Update state covariance
-        P = P - K * P_yx;
+        P = P - K * (~P_xy); // ~P_xy = P_yx
     }
 };
 
