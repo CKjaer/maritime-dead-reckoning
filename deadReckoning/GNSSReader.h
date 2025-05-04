@@ -5,8 +5,8 @@
 
 class GNSSReader : public SFE_UBLOX_GNSS {
 public:
-    GNSSReader() : debugEnabled(false) {}
-    GNSSReader(bool enableDebug) : debugEnabled(enableDebug) {}
+    GNSSReader();
+    GNSSReader(bool enableDebug);
 
     struct GNSSCoordinates {
         double latitude;

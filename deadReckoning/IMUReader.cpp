@@ -40,7 +40,7 @@ bool IMUReader::updateAccelerometer()
     return false;
 }
 
-const AccData& IMUReader::getAccData() const
+const IMUReader::AccData& IMUReader::getAccData() const
 {
     return accData;
 }

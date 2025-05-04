@@ -35,7 +35,7 @@ bool GNSSReader::updateCoordinates(float samplingRate)
         return false;
 }
 
-const GNSSCoordinates& GNSSReader::getCoordinates() const { return coordinates; }
+const GNSSReader::GNSSCoordinates& GNSSReader::getCoordinates() const { return coordinates; }
 
 void GNSSReader::printToSerial(const std::array<double, 2>& measured, const std::array<double, 2>& estimated, int numDecimals) {
 	Serial.print("measured=" + String(measured[0], numDecimals) + "," + String(measured[1], numDecimals));

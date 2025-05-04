@@ -7,7 +7,7 @@
 */
 class IMUReader : public LSM6DS3Class {
 public:
-    IMUReader(TwoWire& wire, uint8_t slaveAddress) : LSM6DS3Class{ wire, slaveAddress } {}
+    IMUReader(TwoWire& wire, uint8_t slaveAddress);
 
     struct AccData
     {
