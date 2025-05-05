@@ -5,7 +5,7 @@
 #include <Wire.h> // Required for I2C 
 #include <BasicLinearAlgebra.h>
 #include <array>
-Hello
+
 
 GNSSReader gnss;
 IMUReader imu{ Wire, LSM6DS3_ADDRESS };
