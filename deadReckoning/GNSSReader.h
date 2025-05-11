@@ -1,7 +1,7 @@
 #pragma once
 #include <array>
 #include <Wire.h> // Required for I2C
-#include <SparkFun_u-blox_GNSS_v3.h>
+#include <SparkFun_u-blox_GNSS_Arduino_Library.h> 
 
 class GNSSReader : public SFE_UBLOX_GNSS {
 public:
