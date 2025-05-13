@@ -9,8 +9,8 @@
 
 GNSSReader gnss;
 IMUReader imu{ Wire, LSM6DS3_ADDRESS };
-UKF ukf;
-
+constexpr float headingDegrees{ 180.0f };
+UKF ukf(headingDegrees);
 
 void setup()
 {
@@ -24,40 +24,38 @@ void setup()
 
 void loop() {
     
-    static bool referenceInitialized = false;
+    static bool referenceInitialized{ false };
     static std::array<double, 2> lastReference;
     static std::array<double, 2> currentPosition;
+    static std::array<double ,2> cartesianPosition;
     static BLA::Matrix<ukf.n_m> measurements;
-
-
+    
     if (gnss.updateCoordinates() && imu.updateAccelerometer()) { // NB. GNSS receiver sample rate is 1 Hz
         const auto& coords = gnss.getCoordinates();
 
-		if (!referenceInitialized) {
-			lastReference = { coords.latitude, coords.longitude };
-			referenceInitialized = true;
-			return;
-		}
+      if (!referenceInitialized) {
+        lastReference = { coords.latitude, coords.longitude };
+        referenceInitialized = true;
+        return;
+      }
 
         currentPosition = { coords.latitude, coords.longitude };
-        currentPosition = wgs84::toCartesian(lastReference, currentPosition); // Convert to Cartesian in meters using the UTM projection
+        cartesianPosition = wgs84::toCartesian(lastReference, currentPosition); // Convert to Cartesian in meters using the UTM projection
         lastReference = currentPosition;
         
         const auto& accData = imu.getAccData();
-        measurements = { currentPosition[0], currentPosition[1], accData.accX, accData.accY };
+        measurements = { cartesianPosition[0], cartesianPosition[1], accData.accX, accData.accY };
         
         // Compute the positional state prediction using the UKF
         ukf.timeUpdate(); 
         ukf.measurementUpdate(measurements);
 
         // Print the measurement and estimate for data acquisition using serial_reader.py
-        gnss.printToSerial(currentPosition, ukf.getPosition(), 10);
-        
-        // Debugging
-        // Serial.println("Position data: Lat=" + String(referencePosition[0]) + " Lon=" + String(referencePosition[1]));
-        // Serial.println("Accelerometer data: X=" + String(accData.accX) + " Y=" + String(accData.accY));
+        gnss.printToSerial(cartesianPosition, ukf.getPosition(), 10);
 
-
+        // Increase the noise covariance by 10x to after 50 measurements
+        // to simulate GNSS intereference 
+        ukf.simulateOutage(5);
     }
 }
 
