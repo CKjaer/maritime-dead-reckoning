@@ -6,13 +6,13 @@
 class UKF
 {
 public:
-    static constexpr std::uint8_t n_x{ 6 }; // State vector size
-    static constexpr std::uint8_t n_m{ 4 }; // Measurement vector size
-    static constexpr std::uint8_t num_sigma_points{ 2 * n_x + 1 }; // No. sigma vectors
+    static constexpr int n_x{ 6 };  // State vector dimension
+    static constexpr int n_m{ 4 };  // Measurement vector dimension
+    static constexpr int num_sigma_vec{ 2 * n_x + 1 }; 
 
     UKF(float theta = 0.0f, float alpha = 1.0f, float beta = 2.0f, float kappa = 2.0f, float Ts = 0.01f, 
         float phi = 0.95f, float sigma_a = 0.2f)
-        : theta(theta * (180 / M_PI)), alpha(alpha), beta(beta), kappa(kappa), Ts(Ts), phi(phi), sigma_a(sigma_a)
+        : theta(theta * (180.0f / M_PI)), alpha(alpha), beta(beta), kappa(kappa), Ts(Ts), phi(phi), sigma_a(sigma_a)
       {
         lambda = std::pow(alpha, 2) * (static_cast<float>(n_x) + kappa) - static_cast<float>(n_x); // Scaling parameter
         k = std::sqrt(static_cast<float>(n_x) + lambda);
@@ -23,7 +23,7 @@ public:
         // Initialize covariance matrix as identity matrix
         P.Fill(0.0f);
         for(size_t i = 0; i < n_x; ++i) {
-            P(i,i) = 1.0f;
+            P(i, i) = 1.0f;
         }
         // Process noise covariance matrix
         float sigma_qa = sigma_a * (1 - phi); 
@@ -34,10 +34,10 @@ public:
         Q(5, 5) = sigma_qa;
 
         // Initialize measurement noise covariance matrix 
-        R(0, 0) = std::pow(sigma_gnss_x, 2); // GPS X
-        R(1, 1) = std::pow(sigma_gnss_y, 2); // GPS Y
-        R(2, 2) = std::pow(0.006728, 2);     // IMU X
-        R(3, 3) = std::pow(0.006481, 2);     // IMU Y
+        R(0, 0) = std::pow(sigma_gnss_x, 2); 
+        R(1, 1) = std::pow(sigma_gnss_y, 2); 
+        R(2, 2) = std::pow(sigma_imu_x, 2);    
+        R(3, 3) = std::pow(sigma_imu_y, 2);     
 
         computeWeights();
         setHeading(theta);
@@ -48,14 +48,14 @@ public:
         createSigmaPoints();
 
         // Apply process model to sigma points
-        X_sigma = A * X_sigma; // [n_x, n_x] * [n_x, num_sigma_points]
+        X_sigma = A * X_sigma; 
 
         // Compute predicted state mean
-        x_hat = X_sigma * W_m; // [n_x, num_sigma_points] * [n_x, 1]
+        x_hat = X_sigma * W_m; 
 
         // Compute predicted state covariance Cov(x)
         BLA::Matrix<n_x> x_diff;
-        for(size_t i{ 0 }; i < num_sigma_points; ++i)
+        for(size_t i{ 0 }; i < num_sigma_vec; ++i)
         {
             x_diff = X_sigma.Column(i) - x_hat;
             P += W_c(i) * x_diff * (~x_diff);
@@ -70,11 +70,11 @@ public:
         y_k = RotM * y_k;
         
         // Apply measurement model to sigma points
-        Y_sigma = H * X_sigma; // [n_m, n_x] * [n_x, num_sigma_points]
+        Y_sigma = H * X_sigma; 
         
         // Compute predicted measurement mean
         BLA::Matrix<n_m> y_hat;
-        y_hat = Y_sigma * W_m; // [n_m, num_sigma_points] * [num_sigma_points, 1]
+        y_hat = Y_sigma * W_m; 
 
         // Compute predicted measurement covariance Cov(y)
         BLA::Matrix<n_m> y_diff;
@@ -84,13 +84,11 @@ public:
         P_yy.Fill(0.0f);
         P_xy.Fill(0.0f);
 
-        for(size_t i{ 0 }; i < num_sigma_points; ++i) 
+        for(size_t i{ 0 }; i < num_sigma_vec; ++i) 
         {
-            // Compute weighted autocovariance
             y_diff = Y_sigma.Column(i) - y_hat;
             P_yy += W_c(i) * y_diff * (~y_diff);
             
-            // Compute weighted crosscovariance
             x_diff = X_sigma.Column(i) - x_hat; 
             P_xy += W_c(i) * x_diff * (~y_diff);
         }
@@ -122,14 +120,9 @@ public:
         updateMeasurementNoise();
     }
 
-    void updateMeasurementNoise() {
-        R(0, 0) = std::pow(sigma_gnss_x, 2); // GPS X
-        R(1, 1) = std::pow(sigma_gnss_y, 2); // GPS Y
-    }
-
     void setHeading(float theta)
     {
-        this->theta = theta;
+        this->theta = theta * (180.0f / M_PI);
         updateRotation();
     }
 
@@ -149,14 +142,22 @@ public:
     }
 
 private:
-    float alpha, beta, kappa, lambda, k;
-    float Ts;                       // Sampling time
-    float phi;                      // Acceleration smoothing factor
-    float sigma_a;                  // Acceleration noise standard deviation
-    float sigma_gnss_x = 2.461963; // Gnss noise parameters
-    float sigma_gnss_y = 1.420877;
+    float lambda;   // Scaling parameter
+    float alpha;    // Sigma point spread
+    float beta;     // Distribution prior parameter
+    float kappa;    // Secondary scaling parameter
+    float k;        // Sigma point distance factor
+    float Ts;       // Sampling time
+    float phi;      // Acceleration smoothing factor
+    float sigma_a;  // Acceleration noise standard deviation
+    float theta;    // Compass heading
+    
+    // Standard deviation measured for sensors
+    float sigma_gnss_x{ 2.461963 }; 
+    float sigma_gnss_y{ 1.420877 }; 
+    float sigma_imu_x{ 0.006728 };
+    float sigma_imu_y{ 0.006481 };
 
-    float theta;           // Compass heading
     BLA::Matrix<4,4> RotM; // Rotation matrix
 
     // States
@@ -168,14 +169,14 @@ private:
     BLA::Matrix<n_m, n_m> R; // Measurement noise covariance matrix
 
     // Sigma points
-    BLA::Matrix<n_x, num_sigma_points> X_sigma; // Sigma points state matrix
-    BLA::Matrix<n_m, num_sigma_points> Y_sigma; // Sigma points measurement matrix
+    BLA::Matrix<n_x, num_sigma_vec> X_sigma; // Sigma points state matrix
+    BLA::Matrix<n_m, num_sigma_vec> Y_sigma; // Sigma points measurement matrix
     
-    BLA::Matrix<n_x, n_m> K; // Kalman gain
+    BLA::Matrix<n_x, n_m> K;  // Kalman gain
 
     // Weights
-    BLA::Matrix<num_sigma_points> W_m; // Weights for mean
-    BLA::Matrix<num_sigma_points> W_c; // Weights for covariance
+    BLA::Matrix<num_sigma_vec> W_m; // Weights for mean
+    BLA::Matrix<num_sigma_vec> W_c; // Weights for covariance
 
     BLA::Matrix<n_x, n_x> A = { 1, 0, Ts, 0, 0, 0,
                                 0, 1, 0, Ts, 0, 0,
@@ -197,10 +198,23 @@ private:
         W_m(0) = lambda / (n_x + lambda);
         W_c(0) = lambda / (n_x + lambda) + 1 - std::pow(alpha, 2) + beta;
 
-        for (std::uint8_t i = 1; i < num_sigma_points; ++i)
+        for (size_t i{ 1 }; i < num_sigma_vec; ++i)
         {
             W_m(i) = 1 / (2 * (n_x + lambda));
             W_c(i) = 1 / (2 * (n_x + lambda));
+        }
+    }
+
+    void createSigmaPoints() {
+        X_sigma.Column(0) = x_hat; // Set the first sigma points to the mean
+
+        // Calculate the square root of the scaled covariance matrix 
+        auto P_scaled = (n_x + lambda) * P;
+        auto P_sqrt = BLA::CholeskyDecompose(P_scaled).L;
+
+        for (size_t i{ 0 }; i < n_x; ++i) {
+            X_sigma.Column(i + 1) = x_hat + P_sqrt.Column(i); // First half of columns
+            X_sigma.Column(i + n_x + 1) = x_hat - P_sqrt.Column(i); // Second half of the columns
         }
     }
 
@@ -213,17 +227,9 @@ private:
                 0, 0, cos_theta, -sin_theta, 
                 0, 0, sin_theta, cos_theta};
     }
-
-    void createSigmaPoints() {
-        X_sigma.Column(0) = x_hat; // Set the first sigma points to the mean
-
-        // Calculate the square root of the scaled covariance matrix 
-        auto P_scaled = (n_x + lambda) * P;
-        auto P_sqrt = BLA::CholeskyDecompose(P_scaled).L;
-
-        for (std::uint8_t i{ 0 }; i < n_x; ++i) {
-            X_sigma.Column(i + 1) = x_hat + P_sqrt.Column(i); // First half of columns
-            X_sigma.Column(i + n_x + 1) = x_hat - P_sqrt.Column(i); // Second half of the columns
-        }
+    
+    void updateMeasurementNoise() {
+        R(0, 0) = std::pow(sigma_gnss_x, 2); 
+        R(1, 1) = std::pow(sigma_gnss_y, 2); 
     }
 };
