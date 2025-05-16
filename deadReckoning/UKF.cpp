@@ -1,3 +1,4 @@
+#include "ElementStorage.h"
 #include "UKF.h"
    
     UKF::UKF(float theta, float alpha, float beta, float kappa, float Ts,
@@ -137,10 +138,10 @@
         if (count % numMeasurements == 0) {
             offline = !offline;
             if (offline) {
-                setGNSSNoise(10.0f);
+                setGNSSNoise(20.0f);
             }
             else {
-                setGNSSNoise(0.25f);
+                setGNSSNoise(0.05f);
             }
         }
         count++;

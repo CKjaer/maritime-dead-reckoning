@@ -19,29 +19,29 @@ void setup() {
   if (!gnss.begin()) { Serial.println("Failed to initialize GNSS"); }
   if (!imu.begin()) { Serial.println("Failed to initialize IMU"); }
   imu.setAccRate13Hz();
+  delay(5000);
 }
 
 void loop() {
 
   static bool referenceInitialized{ false };
-  static std::array<double, 2> lastReference;
   static std::array<double, 2> currentPosition;
   static std::array<double, 2> cartesianPosition;
+  static std::array<double, 2> reference;
   static BLA::Matrix<ukf.n_m> measurements;
 
   if (gnss.updateCoordinates() && imu.updateAccelerometer()) {  // NB. Default GNSS receiver sample rate is 1 Hz
     const auto& coords = gnss.getCoordinates();
 
     if (!referenceInitialized) {
-      lastReference = { coords.latitude, coords.longitude };
+      reference = { coords.latitude, coords.longitude };
       referenceInitialized = true;
       return;
     }
 
-    currentPosition = { coords.latitude, coords.longitude };
     // Convert to Cartesian position in meters using the UTM projection
-    cartesianPosition = wgs84::toCartesian(lastReference, currentPosition);
-    lastReference = currentPosition;
+    currentPosition = { coords.latitude, coords.longitude };
+    cartesianPosition = wgs84::toCartesian(reference, currentPosition);
 
     const auto& accData = imu.getAccData();
     measurements = { static_cast<float>(cartesianPosition[0]), static_cast<float>(cartesianPosition[1]), accData.accX, accData.accY };
@@ -52,9 +52,10 @@ void loop() {
 
     // Print the measurement and estimate for data acquisition using serial_reader.py
     gnss.printToSerial(cartesianPosition, ukf.getPosition(), 10);
+   
+    // Toggle the noise covariance by scaling it with 20x after 30 samples 
+    // to simulate GNSS interference
+    ukf.simulateOutage(30);
 
-    // Increase the noise covariance by 10x to after 50 measurements
-    // to simulate GNSS intereference
-    ukf.simulateOutage(50);
   }
 }
