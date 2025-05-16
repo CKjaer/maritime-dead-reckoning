@@ -11,7 +11,7 @@ public:
     static constexpr int n_m{ 4 };  // Measurement vector dimension
     static constexpr int num_sigma_vec{ 2 * n_x + 1 };
 
-    UKF(float theta = 0.0f, float alpha = 1.0f, float beta = 2.0f, float kappa = 2.0f, float Ts = 1.0f,
+    UKF(float theta = 0.0f, float alpha = 1.0f, float beta = 0.0f, float kappa = 2.0f, float Ts = 1.0f,
         float phi = 0.95f, float sigma_a = 0.2f);
 
     void timeUpdate();
